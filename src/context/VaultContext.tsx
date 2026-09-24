@@ -79,10 +79,28 @@ export const VaultProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [tier, setTier] = useState<TierType>('free');
   const [alertThreshold, setAlertThreshold] = useState<number>(80);
 
-  const [services, setServices] = useState<ApiService[]>(MOCK_SERVICES);
-  const [keys, setKeys] = useState<ApiKey[]>(MOCK_KEYS);
-  const [logs, setLogs] = useState<UsageLog[]>(MOCK_LOGS);
+  const [services, setServices] = useState<ApiService[]>([]);
+  const [keys, setKeys] = useState<ApiKey[]>([]);
+  const [logs, setLogs] = useState<UsageLog[]>([]);
   const [history] = useState<UsageHistoryPoint[]>(MOCK_HISTORY);
+
+  // Fetch initial data from PostgreSQL via Next.js API
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/services').then(res => res.json()),
+      fetch('/api/keys').then(res => res.json()),
+      fetch('/api/logs').then(res => res.json())
+    ]).then(([fetchedServices, fetchedKeys, fetchedLogs]) => {
+      if (Array.isArray(fetchedServices) && fetchedServices.length > 0) setServices(fetchedServices);
+      else setServices(MOCK_SERVICES);
+      
+      if (Array.isArray(fetchedKeys) && fetchedKeys.length > 0) setKeys(fetchedKeys);
+      else setKeys(MOCK_KEYS);
+
+      if (Array.isArray(fetchedLogs) && fetchedLogs.length > 0) setLogs(fetchedLogs);
+      else setLogs(MOCK_LOGS);
+    }).catch(console.error);
+  }, []);
 
   // Rate limit gauge logic
   const getMaxRateLimit = (): number => {
@@ -163,7 +181,7 @@ export const VaultProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setActiveView('service-detail');
   };
 
-  const addApiKey = (
+  const addApiKey = async (
     serviceId: string,
     serviceName: string,
     environment: KeyEnvironment,
@@ -173,8 +191,7 @@ export const VaultProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const suffix = rawKey.slice(-4) || 'X9Z2';
     const maskedKey = `${prefix}_****-****-${suffix}`;
 
-    const newKey: ApiKey = {
-      id: `key-${Date.now()}`,
+    const newKeyData = {
       serviceId,
       serviceName,
       environment,
@@ -185,27 +202,48 @@ export const VaultProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       status: 'active',
     };
 
-    setKeys((prev) => [newKey, ...prev]);
+    try {
+      const res = await fetch('/api/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newKeyData),
+      });
+      if (!res.ok) throw new Error('Failed to save key');
+      const savedKey = await res.json();
+      setKeys((prev) => [savedKey, ...prev]);
 
-    // Update service count if needed
-    setServices((prev) =>
-      prev.map((s) => {
-        if (s.id === serviceId) {
-          const newUsed = Math.min(s.limit, s.used + 10);
-          return {
-            ...s,
-            used: newUsed,
-            statusColor: calculateStatusColor(newUsed, s.limit),
-            status: calculateStatus(newUsed, s.limit),
-          };
-        }
-        return s;
-      })
-    );
+      // Update service count
+      const targetService = services.find(s => s.id === serviceId);
+      if (targetService) {
+        const newUsed = Math.min(targetService.limit, targetService.used + 10);
+        const statusColor = calculateStatusColor(newUsed, targetService.limit);
+        const status = calculateStatus(newUsed, targetService.limit);
+
+        await fetch('/api/services', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...targetService, used: newUsed, statusColor, status })
+        });
+
+        setServices((prev) =>
+          prev.map((s) => (s.id === serviceId ? { ...s, used: newUsed, statusColor, status } : s))
+        );
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const deleteApiKey = (keyId: string) => {
-    setKeys((prev) => prev.filter((k) => k.id !== keyId));
+  const deleteApiKey = async (keyId: string) => {
+    try {
+      // Allow optimistic UI update or wait for network. We will wait for network here.
+      const res = await fetch(`/api/keys?id=${keyId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setKeys((prev) => prev.filter((k) => k.id !== keyId));
+      }
+    } catch (err) {
+      console.error('Failed to delete key', err);
+    }
   };
 
   const simulateApiCall = (serviceId?: string) => {

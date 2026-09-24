@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+}
+
+model ApiService {
+  id          String    @id @default(cuid())
+  name        String
+  category    String
+  used        Int       @default(0)
+  limit       Int       @default(1000)
+  status      String    @default("healthy") // "healthy" | "warning" | "critical"
+  statusColor String    @default("green")   // "green" | "yellow" | "red"
+  resetTime   String    @default("In 24 days")
+  endpointUrl String
+  latencyMs   Int       @default(120)
+  description String
+  color       String    @default("#38bdf8")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  keys        ApiKey[]
+  logs        UsageLog[]
+
+  @@map("api_services")
+}
+
+model ApiKey {
+  id          String      @id @default(cuid())
+  serviceId   String
+  serviceName String
+  environment String      @default("Development") // "Production" | "Staging" | "Development"
+  maskedKey   String
+  rawKey      String
+  status      String      @default("active")      // "active" | "warning" | "revoked"
+  lastUsed    String      @default("Just now")
+  dateAdded   String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  service     ApiService  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@map("api_keys")
+}
+
+model UsageLog {
+  id           String      @id @default(cuid())
+  serviceId    String
+  serviceName  String
+  endpoint     String
+  status       Int         @default(200)
+  responseTime String      @default("120ms")
+  payloadSize  String      @default("1.2 KB")
+  timestamp    String
+  createdAt    DateTime    @default(now())
+
+  service      ApiService  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@map("usage_logs")
+}
+
+model UserSettings {
+  id             String   @id @default("default-settings")
+  tier           String   @default("free") // "free" | "pro" | "enterprise"
+  alertThreshold Int      @default(80)
+  theme          String   @default("dark")
+  updatedAt      DateTime @updatedAt
+
+  @@map("user_settings")
+}
