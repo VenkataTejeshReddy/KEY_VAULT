@@ -9,6 +9,7 @@ import { DashboardView } from '../components/views/DashboardView';
 import { VaultView } from '../components/views/VaultView';
 import { ServiceDetailView } from '../components/views/ServiceDetailView';
 import { ForecastView } from '../components/views/ForecastView';
+import { IncidentView } from '../components/views/IncidentView';
 import { SettingsView } from '../components/views/SettingsView';
 
 export default function Home() {
@@ -39,6 +40,7 @@ export default function Home() {
           {activeView === 'vault' && <VaultView />}
           {activeView === 'service-detail' && <ServiceDetailView />}
           {activeView === 'forecast' && <ForecastView />}
+          {activeView === 'incidents' && <IncidentView />}
           {activeView === 'settings' && <SettingsView />}
         </main>
       </div>

@@ -3,7 +3,7 @@
 import React from 'react';
 import { useVault } from '../context/VaultContext';
 import { ActiveView } from '../types';
-import { LayoutDashboard, Key, Server, Settings, ShieldCheck, ExternalLink, X, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, Key, Server, Settings, ShieldCheck, ExternalLink, X, TrendingUp, ShieldAlert } from 'lucide-react';
 
 interface SidebarProps {
   mobileOpen?: boolean;
@@ -18,6 +18,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onCloseMob
     { id: 'vault', label: 'API Key Vault', icon: Key },
     { id: 'service-detail', label: 'Service Detail', icon: Server },
     { id: 'forecast', label: 'Usage Forecast', icon: TrendingUp },
+    { id: 'incidents', label: 'Incident Black Box', icon: ShieldAlert },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 

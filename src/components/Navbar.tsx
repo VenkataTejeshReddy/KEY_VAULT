@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useVault } from '../context/VaultContext';
 import { Shield, Sun, Moon, Search, Zap, User, Menu, Bell } from 'lucide-react';
 
@@ -8,17 +8,97 @@ interface NavbarProps {
   onToggleSidebarMobile?: () => void;
 }
 
+interface NotificationItem {
+  id: string;
+  title: string;
+  message: string;
+  time: string;
+  type: 'critical' | 'warning' | 'info';
+  read: boolean;
+  actionLabel?: string;
+  action?: () => void;
+}
+
 export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebarMobile }) => {
-  const { activeView, theme, toggleTheme, tier, usedRequests, getMaxRateLimit, alertThreshold, logout } = useVault();
+  const {
+    activeView,
+    theme,
+    toggleTheme,
+    tier,
+    usedRequests,
+    getMaxRateLimit,
+    alertThreshold,
+    logout,
+    services,
+    openIncidents,
+    openServiceDetail,
+  } = useVault();
   const maxLimit = getMaxRateLimit();
   const percentage = Math.round((usedRequests / maxLimit) * 100);
   const isAlerting = percentage >= alertThreshold;
+
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+
+  useEffect(() => {
+    const list: NotificationItem[] = [];
+
+    if (percentage >= 90) {
+      list.push({
+        id: 'notif-rate-crit',
+        title: 'Critical Rate Limit Quota (90%+)',
+        message: `Global rate limit at ${percentage}% (${usedRequests}/${maxLimit} req/min). Upstream 429 errors may occur.`,
+        time: 'Just now',
+        type: 'critical',
+        read: false,
+      });
+    } else if (percentage >= alertThreshold) {
+      list.push({
+        id: 'notif-rate-warn',
+        title: 'Rate Limit Warning Threshold Reached',
+        message: `Global rate limit at ${percentage}% (${usedRequests}/${maxLimit} req/min).`,
+        time: '1 min ago',
+        type: 'warning',
+        read: false,
+      });
+    }
+
+    const warningServices = services.filter((s) => s.status === 'warning' || s.status === 'critical' || s.used / s.limit >= 0.8);
+    warningServices.forEach((s) => {
+      list.push({
+        id: `notif-svc-${s.id}`,
+        title: `${s.name} Quota Alert (${Math.round((s.used / s.limit) * 100)}%)`,
+        message: `${s.name} has consumed ${s.used} of ${s.limit} allocated monthly requests.`,
+        time: '5 mins ago',
+        type: s.status === 'critical' ? 'critical' : 'warning',
+        read: false,
+        actionLabel: 'Inspect Service',
+        action: () => openServiceDetail(s.id),
+      });
+    });
+
+    list.push({
+      id: 'notif-inc-1',
+      title: 'Incident Black Box Ready',
+      message: 'AI Root Cause Replay and event correlation engine ready for incident simulations.',
+      time: '10 mins ago',
+      type: 'info',
+      read: true,
+      actionLabel: 'View Incidents',
+      action: () => openIncidents(),
+    });
+
+    setNotifications(list);
+  }, [percentage, alertThreshold, usedRequests, maxLimit, services]);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   const viewTitles: Record<string, string> = {
     dashboard: 'Dashboard Telemetry',
     vault: 'API Key Vault',
     'service-detail': 'Service Telemetry Detail',
     forecast: 'Predictive Forecast',
+    incidents: 'Incident Black Box & AI SRE',
     settings: 'Vault & Rate Settings',
   };
 
@@ -75,21 +155,86 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebarMobile }) => {
           <span className="text-slate-500 dark:text-slate-400">({maxLimit}/m)</span>
         </div>
 
-        {/* Notifications Icon with indicator */}
-        <button
-          className={`relative rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all ${
-            isAlerting ? 'border-amber-500/50 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10' : ''
-          }`}
-          title={isAlerting ? `Alert: Rate usage at ${percentage}%` : 'System notifications clear'}
-        >
-          <Bell className="h-4 w-4" />
-          {isAlerting && (
-            <span className="absolute -top-1 -right-1 flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
-            </span>
+        {/* Notifications Icon with Popover */}
+        <div className="relative">
+          <button
+            onClick={() => setIsNotificationOpen((prev) => !prev)}
+            className={`relative rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer ${
+              unreadCount > 0 ? 'border-amber-500/50 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10' : ''
+            }`}
+            title={unreadCount > 0 ? `${unreadCount} unread system notifications` : 'System notifications'}
+          >
+            <Bell className="h-4 w-4" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white shadow-sm">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+
+          {/* Notifications Dropdown Panel */}
+          {isNotificationOpen && (
+            <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-2xl backdrop-blur-2xl z-50 animate-fade-in text-xs space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <Bell className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+                  <span className="font-bold text-slate-900 dark:text-white text-sm">System Notifications</span>
+                </div>
+                {unreadCount > 0 && (
+                  <button
+                    onClick={() => setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))}
+                    className="text-[11px] font-semibold text-cyan-600 dark:text-cyan-400 hover:underline cursor-pointer"
+                  >
+                    Mark all as read
+                  </button>
+                )}
+              </div>
+
+              <div className="max-h-72 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-100 dark:divide-slate-800/60">
+                {notifications.length === 0 ? (
+                  <p className="text-center py-6 text-slate-400">No active alerts. All systems normal.</p>
+                ) : (
+                  notifications.map((notif) => (
+                    <div
+                      key={notif.id}
+                      className={`pt-2 flex items-start gap-2.5 p-2 rounded-xl transition-colors ${
+                        notif.read ? 'opacity-70 bg-transparent' : 'bg-slate-50 dark:bg-slate-800/50'
+                      }`}
+                    >
+                      <div className="mt-0.5 shrink-0">
+                        {notif.type === 'critical' ? (
+                          <span className="flex h-2 w-2 rounded-full bg-red-500" />
+                        ) : notif.type === 'warning' ? (
+                          <span className="flex h-2 w-2 rounded-full bg-amber-500" />
+                        ) : (
+                          <span className="flex h-2 w-2 rounded-full bg-cyan-500" />
+                        )}
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <p className="font-semibold text-slate-800 dark:text-slate-200">{notif.title}</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">{notif.message}</p>
+                        <div className="flex items-center justify-between pt-1">
+                          <span className="text-[10px] font-mono text-slate-400">{notif.time}</span>
+                          {notif.action && (
+                            <button
+                              onClick={() => {
+                                notif.action?.();
+                                setIsNotificationOpen(false);
+                              }}
+                              className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400 hover:underline cursor-pointer"
+                            >
+                              {notif.actionLabel || 'View Details'} →
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           )}
-        </button>
+        </div>
 
         {/* Theme Toggle Button */}
         <button

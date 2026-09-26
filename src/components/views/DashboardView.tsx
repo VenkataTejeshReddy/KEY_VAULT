@@ -16,11 +16,40 @@ import {
   ChevronRight,
   Sparkles,
   TrendingUp,
+  Eye,
+  EyeOff,
+  SlidersHorizontal,
+  X,
 } from 'lucide-react';
 
+// Convert stored resetTime string to friendly label
+function formatResetLabel(resetTime: string): string {
+  const t = (resetTime || '').toLowerCase().trim();
+  if (t === '1h' || t === '60m') return 'Resets every hour';
+  if (t === '24h' || t === '1d') return 'Resets every 24h';
+  if (t === '30d') return 'Resets every 30 days';
+  if (t.endsWith('h')) {
+    const h = parseInt(t);
+    return isNaN(h) ? `Resets: ${resetTime}` : `Resets every ${h}h`;
+  }
+  if (t.endsWith('d')) {
+    const d = parseInt(t);
+    return isNaN(d) ? `Resets: ${resetTime}` : `Resets every ${d} days`;
+  }
+  return `Resets: ${resetTime}`;
+}
+
 export const DashboardView: React.FC = () => {
-  const { services, openServiceDetail, keys, simulateApiCall, openForecast, forecasts } = useVault();
+  const {
+    services, openServiceDetail, keys, simulateApiCall, openForecast, forecasts,
+    visibleServiceIds, toggleServiceVisibility,
+  } = useVault();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isManagePanelOpen, setIsManagePanelOpen] = useState(false);
+
+  const visibleServices = services.filter((s) =>
+    visibleServiceIds.size === 0 || visibleServiceIds.has(s.id)
+  );
 
   const criticalForecast = forecasts.find((f) => f.riskLevel === 'critical');
 
@@ -79,10 +108,10 @@ export const DashboardView: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={() => simulateApiCall()}
-            className="flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-xs font-semibold text-cyan-700 dark:text-cyan-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all shadow-sm"
+            className="flex items-center gap-1.5 rounded-xl border border-cyan-500/30 dark:border-cyan-500/40 bg-cyan-500/10 dark:bg-cyan-950/40 px-3.5 py-2 text-xs font-semibold text-cyan-700 dark:text-cyan-300 hover:bg-cyan-500/20 dark:hover:bg-cyan-900/50 transition-all shadow-sm cursor-pointer"
           >
             <Sparkles className="h-3.5 w-3.5 text-cyan-600 dark:text-cyan-400 animate-spin-slow" />
-            <span>Simulate Traffic</span>
+            <span>Fire Live Ping</span>
           </button>
 
           <button
@@ -97,6 +126,53 @@ export const DashboardView: React.FC = () => {
 
       {/* Live Rate Limit Gauge Widget */}
       <RateLimitGauge />
+
+      {/* Dashboard Manage View Panel */}
+      {isManagePanelOpen && (
+        <div className="relative rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 p-5 backdrop-blur-xl shadow-lg animate-fade-in">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Manage Dashboard Cards</h3>
+              <span className="text-xs text-slate-500 dark:text-slate-400">Toggle which service cards appear below</span>
+            </div>
+            <button
+              onClick={() => setIsManagePanelOpen(false)}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+            {services.map((svc) => {
+              const isVisible = visibleServiceIds.has(svc.id);
+              return (
+                <button
+                  key={svc.id}
+                  onClick={() => toggleServiceVisibility(svc.id)}
+                  className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
+                    isVisible
+                      ? 'border-cyan-500/50 bg-cyan-50 dark:bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
+                      : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-500'
+                  }`}
+                >
+                  {isVisible ? (
+                    <Eye className="h-3.5 w-3.5 text-cyan-500" />
+                  ) : (
+                    <EyeOff className="h-3.5 w-3.5 text-slate-400" />
+                  )}
+                  <span className="truncate">{svc.name}</span>
+                </button>
+              );
+            })}
+            {services.length === 0 && (
+              <p className="col-span-full text-xs text-slate-500 dark:text-slate-400 text-center py-3">
+                No services connected yet. Click "Add Connection" to get started.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Forecast & Predictive Telemetry Quick Banner */}
       <div className="relative overflow-hidden rounded-2xl border border-cyan-500/30 bg-gradient-to-r from-cyan-500/10 via-blue-500/5 to-purple-500/10 p-5 backdrop-blur-xl transition-all hover:border-cyan-500/50">
@@ -142,13 +218,28 @@ export const DashboardView: React.FC = () => {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Server className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Connected Services ({services.length})</h2>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+              Connected Services ({visibleServices.length}{visibleServices.length !== services.length ? `/${services.length}` : ''})
+            </h2>
           </div>
-          <span className="text-xs text-slate-500 dark:text-slate-400">Click any card to inspect detail telemetry logs</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsManagePanelOpen((v) => !v)}
+              className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+                isManagePanelOpen
+                  ? 'border-cyan-500/50 bg-cyan-50 dark:bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600'
+              }`}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Manage View
+            </button>
+            <span className="text-xs text-slate-500 dark:text-slate-400 hidden sm:inline">Click any card to inspect detail telemetry logs</span>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {services.map((svc) => {
+          {visibleServices.map((svc) => {
             const percentage = Math.round((svc.used / svc.limit) * 100);
             return (
               <div
@@ -204,13 +295,25 @@ export const DashboardView: React.FC = () => {
                 <div className="mt-4 flex items-center justify-between border-t border-slate-200 dark:border-slate-800/80 pt-3 text-[11px] text-slate-500 dark:text-slate-400 font-mono">
                   <span className="flex items-center gap-1">
                     <Clock className="h-3 w-3 text-slate-400 dark:text-slate-500" />
-                    Reset: {svc.resetTime}
+                    {formatResetLabel(svc.resetTime)}
                   </span>
                   <span className="text-slate-500 dark:text-slate-400">Latency: {svc.latencyMs}ms</span>
                 </div>
               </div>
             );
           })}
+          {visibleServices.length === 0 && services.length > 0 && (
+            <div className="col-span-full rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-10 text-center">
+              <EyeOff className="h-8 w-8 text-slate-400 dark:text-slate-600 mx-auto mb-2" />
+              <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">All service cards are hidden.</p>
+              <button
+                onClick={() => setIsManagePanelOpen(true)}
+                className="mt-2 text-xs text-cyan-600 dark:text-cyan-400 hover:underline cursor-pointer"
+              >
+                Open Manage View to show them
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

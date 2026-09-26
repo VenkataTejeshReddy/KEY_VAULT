@@ -3,38 +3,72 @@
 import React, { useState } from 'react';
 import { useVault } from '../../context/VaultContext';
 import { KeyEnvironment } from '../../types';
-import { X, Key, ShieldCheck, Check, Info } from 'lucide-react';
+import { X, Key, ShieldCheck, Check, Info, Plus } from 'lucide-react';
 
 interface AddKeyModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export const AddKeyModal: React.FC<AddKeyModalProps> = ({ isOpen, onClose }) => {
-  const { services, addApiKey } = useVault();
+// Known provider types with their metadata
+const PROVIDER_TEMPLATES: Record<string, { category: string; endpointUrl: string; color: string; resetTime: string; limit: number; description: string }> = {
+  github:       { category: 'Developer Tools',  endpointUrl: 'https://api.github.com',          color: '#6366f1', resetTime: '1h',   limit: 5000,  description: 'GitHub REST API — repositories, users, rate limits' },
+  groq:         { category: 'AI / LLM',          endpointUrl: 'https://api.groq.com/openai',    color: '#f59e0b', resetTime: '24h',  limit: 14400, description: 'Groq LPU Inference API — ultra-fast LLM inference' },
+  openai:       { category: 'AI / LLM',          endpointUrl: 'https://api.openai.com',         color: '#10b981', resetTime: '1h',   limit: 10000, description: 'OpenAI API — GPT models, embeddings, DALL-E' },
+  openweather:  { category: 'Weather / Geo',     endpointUrl: 'https://api.openweathermap.org', color: '#38bdf8', resetTime: '1h',   limit: 1000,  description: 'OpenWeatherMap — real-time weather data' },
+  alphavantage: { category: 'Finance / Market',  endpointUrl: 'https://www.alphavantage.co',    color: '#f97316', resetTime: '24h',  limit: 500,   description: 'Alpha Vantage — stock quotes, forex, crypto data' },
+  twilio:       { category: 'Communication',     endpointUrl: 'https://api.twilio.com',         color: '#ec4899', resetTime: '30d',  limit: 1000,  description: 'Twilio — SMS, voice calls, messaging API' },
+  stripe:       { category: 'Payments',          endpointUrl: 'https://api.stripe.com',         color: '#8b5cf6', resetTime: '30d',  limit: 10000, description: 'Stripe — payments, subscriptions, billing' },
+  custom:       { category: 'Custom',            endpointUrl: '',                               color: '#64748b', resetTime: '24h',  limit: 1000,  description: 'Custom API connection' },
+};
 
-  const [serviceId, setServiceId] = useState<string>(services[0]?.id || 'github');
+export const AddKeyModal: React.FC<AddKeyModalProps> = ({ isOpen, onClose }) => {
+  const { addApiKey } = useVault();
+
+  const [providerType, setProviderType] = useState<string>('groq');
+  const [customLabel, setCustomLabel] = useState<string>('');
+  const [customEndpoint, setCustomEndpoint] = useState<string>('');
   const [environment, setEnvironment] = useState<KeyEnvironment>('Production');
   const [rawKeyInput, setRawKeyInput] = useState<string>('');
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const template = PROVIDER_TEMPLATES[providerType] || PROVIDER_TEMPLATES.custom;
+  const displayName = customLabel.trim() || `${providerType.charAt(0).toUpperCase() + providerType.slice(1)} (${environment})`;
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!rawKeyInput.trim()) return;
 
-    const selectedService = services.find((s) => s.id === serviceId);
-    const serviceName = selectedService ? selectedService.name : 'Custom API Service';
+    // Generate a unique service ID so every submission gets its own dashboard card
+    const uniqueServiceId = `${providerType}-${Date.now()}`;
+    const endpointUrl = customEndpoint.trim() || template.endpointUrl;
 
-    addApiKey(serviceId, serviceName, environment, rawKeyInput.trim());
+    await addApiKey(
+      uniqueServiceId,
+      displayName,
+      environment,
+      rawKeyInput.trim(),
+      {
+        category: template.category,
+        endpointUrl,
+        color: template.color,
+        resetTime: template.resetTime,
+        limit: template.limit,
+        description: template.description || `${displayName} API`,
+        providerType,
+      }
+    );
 
     setIsSuccess(true);
     setTimeout(() => {
       setIsSuccess(false);
       setRawKeyInput('');
+      setCustomLabel('');
+      setCustomEndpoint('');
       onClose();
-    }, 900);
+    }, 1200);
   };
 
   const getMaskedPreview = () => {
@@ -46,7 +80,7 @@ export const AddKeyModal: React.FC<AddKeyModalProps> = ({ isOpen, onClose }) => 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 dark:bg-slate-950/80 p-4 backdrop-blur-md transition-all duration-300">
-      <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl transition-all">
+      <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl transition-all max-h-[92vh] overflow-y-auto">
         {/* Top header */}
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
           <div className="flex items-center gap-3">
@@ -55,10 +89,9 @@ export const AddKeyModal: React.FC<AddKeyModalProps> = ({ isOpen, onClose }) => 
             </div>
             <div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">Add New Connection</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Connect a new service API key to KeyVault</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Each key gets its own dashboard card</p>
             </div>
           </div>
-
           <button
             onClick={onClose}
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
@@ -73,27 +106,71 @@ export const AddKeyModal: React.FC<AddKeyModalProps> = ({ isOpen, onClose }) => 
               <Check className="h-8 w-8" />
             </div>
             <h4 className="text-xl font-bold text-slate-900 dark:text-white">Connection Secured!</h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">API key has been encrypted and stored in local state.</p>
+            <p className="text-sm font-mono text-cyan-600 dark:text-cyan-400 mt-1">{displayName}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">New dashboard card created. Syncing now…</p>
           </div>
         ) : (
           <form onSubmit={handleFormSubmit} className="mt-5 space-y-4">
-            {/* Service Dropdown */}
+
+            {/* Provider Type Grid */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2">
+                Provider Type
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {Object.keys(PROVIDER_TEMPLATES).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setProviderType(p)}
+                    className={`rounded-xl border py-2 px-1 text-[11px] font-semibold capitalize transition-all cursor-pointer ${
+                      providerType === p
+                        ? 'border-cyan-500/60 bg-cyan-50 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 shadow-sm'
+                        : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                    style={providerType === p ? { borderColor: `${template.color}60`, backgroundColor: `${template.color}15`, color: template.color } : {}}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                {template.category} · {template.endpointUrl || 'Custom endpoint'} · Resets every {template.resetTime}
+              </p>
+            </div>
+
+            {/* Custom Display Label */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-                Target Service Name
+                Display Label <span className="text-slate-400 normal-case font-normal">(optional)</span>
               </label>
-              <select
-                value={serviceId}
-                onChange={(e) => setServiceId(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-all font-medium cursor-pointer"
-              >
-                {services.map((svc) => (
-                  <option key={svc.id} value={svc.id}>
-                    {svc.name} — ({svc.category})
-                  </option>
-                ))}
-              </select>
+              <input
+                type="text"
+                value={customLabel}
+                onChange={(e) => setCustomLabel(e.target.value)}
+                placeholder={`e.g. "Groq Production" or "My Weather Key"`}
+                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-600 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-all"
+              />
+              <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                Card will appear as: <span className="font-bold text-slate-700 dark:text-slate-300">{displayName}</span>
+              </p>
             </div>
+
+            {/* Custom Endpoint (only for custom type) */}
+            {providerType === 'custom' && (
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                  Base Endpoint URL
+                </label>
+                <input
+                  type="url"
+                  value={customEndpoint}
+                  onChange={(e) => setCustomEndpoint(e.target.value)}
+                  placeholder="https://api.yourservice.com"
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3.5 py-2.5 font-mono text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-600 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-all"
+                />
+              </div>
+            )}
 
             {/* Environment Selector */}
             <div>
@@ -135,7 +212,7 @@ export const AddKeyModal: React.FC<AddKeyModalProps> = ({ isOpen, onClose }) => 
               </div>
               <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
                 <Info className="h-3 w-3 text-cyan-600 dark:text-cyan-400" />
-                Raw keys are immediately masked and kept strictly in frontend memory.
+                Key is masked before storage. Never logged in plaintext.
               </p>
             </div>
 
@@ -162,9 +239,10 @@ export const AddKeyModal: React.FC<AddKeyModalProps> = ({ isOpen, onClose }) => 
               <button
                 type="submit"
                 disabled={!rawKeyInput.trim()}
-                className="rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2 text-xs font-bold text-slate-950 shadow-lg shadow-cyan-500/25 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
+                className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2 text-xs font-bold text-slate-950 shadow-lg shadow-cyan-500/25 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
               >
-                Save Connection
+                <Plus className="h-3.5 w-3.5" />
+                Create Card
               </button>
             </div>
           </form>
